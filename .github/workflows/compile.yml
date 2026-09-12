@@ -1,0 +1,25 @@
+name: Compile dylib via Telegram
+
+on:
+  repository_dispatch:
+    types: [build-dylib]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Download Zip File
+        run: |
+          curl -s -L "${{ github.event.client_payload.file_url }}" -o project.zip
+          unzip project.zip -d src/
+
+      - name: Compile to dylib
+        run: |
+          cd src
+          clang -dynamiclib *.c *.cpp *.m -o output.dylib || echo "Compilation failed"
+
+      - name: Send dylib back to Telegram
+        run: |
+          curl -F document=@src/output.dylib \
+               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&caption=تم%20البناء%20بنجاح"
