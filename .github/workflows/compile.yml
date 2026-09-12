@@ -9,17 +9,29 @@ jobs:
     runs-on: macos-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
       - name: Download Zip File
         run: |
           curl -s -L "${{ github.event.client_payload.file_url }}" -o project.zip
+          mkdir -p src
           unzip project.zip -d src/
 
       - name: Compile to dylib
         run: |
           cd src
-          clang -dynamiclib *.c *.cpp *.m -o output.dylib || echo "Compilation failed"
+          # البحث عن ملفات السورس وتجميعها تلقائياً
+          find . -type f \( -name "*.c" -o -name "*.cpp" -o -name "*.m" -o -name "*.mm" \) | xargs clang++ -dynamiclib -o output.dylib || true
 
       - name: Send dylib back to Telegram
         run: |
-          curl -F document=@src/output.dylib \
-               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument?chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&caption=تم%20البناء%20بنجاح"
+          FILE_PATH=$(find src -name "output.dylib" | head -n 1)
+          if [ -f "$FILE_PATH" ]; then
+            curl -F document=@"$FILE_PATH" \
+                 "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument?chat_id=${{ github.event.client_payload.chat_id }}"
+          else
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+                 -d "chat_id=${{ github.event.client_payload.chat_id }}" \
+                 -d "text=❌ فشل إنشاء ملف الـ dylib. تأكد من أن ملف ZIP يحتوي على ملفات سورس كود (.c أو .cpp أو .m)."
+          fi
